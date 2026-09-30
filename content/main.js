@@ -1,575 +1,251 @@
 (function () {
+  "use strict";
 
-    "use strict";
+  const ANSWERS = {
+    "The teacher is kind, respectful, and easy to approach.": 5,
+    "The teacher actively encouraged student participation during class.": 5
+  };
 
+  let settings = {
+    enabled: true,
+    autoFill: true,
+    autoSubmit: true,
+    delayMs: 1500
+  };
 
-    SEA.Logger.info(
-        "Superior ERP AI started."
-    );
+  let processing = false;
+  let lastFormSignature = "";
 
+  async function loadSettings() {
+    try {
+      const saved = await chrome.storage.local.get([
+        "enabled",
+        "autoFill",
+        "autoSubmit",
+        "delayMs"
+      ]);
 
-    if (
-        !SEA.ErpDetector.isErpHost()
-    ) {
+      settings = {
+        ...settings,
+        ...saved
+      };
+    } catch (error) {
+      console.error("[SEA] Settings error:", error);
+    }
+  }
 
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function getFormSignature(form) {
+    return [
+      location.href,
+      form.getAttribute("action") || "",
+      form.getAttribute("name") || "",
+      [...form.querySelectorAll(".js_question-wrapper")]
+        .map(x => x.id)
+        .join(",")
+    ].join("|");
+  }
+
+  function isSurveyPage() {
+    return !!document.querySelector("form.js_surveyform");
+  }
+
+  async function processSurvey() {
+    if (processing) return;
+
+    const form = document.querySelector("form.js_surveyform");
+
+    if (!form) return;
+
+    const signature = getFormSignature(form);
+
+    if (signature === lastFormSignature) {
+      return;
+    }
+
+    lastFormSignature = signature;
+    processing = true;
+
+    console.log("[SEA] Survey page detected.");
+
+    try {
+      if (!settings.enabled) {
+        console.log("[SEA] Assistant disabled.");
         return;
+      }
 
-    }
+      await sleep(settings.delayMs);
 
-
-    /*
-     * Explicit answer rules.
-     *
-     * These are the two questions you already
-     * confirmed from the actual ERP form.
-     */
-    const ANSWERS = {
-
-        "The teacher is kind, respectful, and easy to approach.": 5,
-
-        "The teacher actively encouraged student participation during class.": 5
-
-    };
-
-
-    let processing = false;
-
-    let navigationBusy = false;
-
-    let lastFormSignature = "";
-
-
-    async function getSettings() {
-
-        try {
-
-            const data =
-                await chrome.storage.local.get(
-                    "settings"
-                );
-
-
-            return Object.assign(
-                {},
-                SEA.DEFAULT_SETTINGS,
-                data.settings || {}
-            );
-
-        } catch (error) {
-
-            SEA.Logger.warn(
-                "Settings unavailable. Using defaults."
-            );
-
-
-            return {
-                ...SEA.DEFAULT_SETTINGS
-            };
-
-        }
-
-    }
-
-
-    function wait(ms) {
-
-        return new Promise(
-            resolve =>
-                setTimeout(
-                    resolve,
-                    ms
-                )
-        );
-
-    }
-
-
-    function getFormSignature(
-        form
-    ) {
-
-        const questions =
-            [
-                ...form.querySelectorAll(
-                    ".js_question-wrapper tbody tr"
-                )
-            ]
-            .map(
-                row =>
-                    (
-                        row
-                            .querySelector("th")
-                            ?.innerText || ""
-                    )
-                    .replace(/\s+/g, " ")
-                    .trim()
-            )
-            .join("|");
-
-
-        return [
-
-            location.href,
-
-            form.action || "",
-
-            form.name || "",
-
-            questions
-
-        ].join("::");
-
-    }
-
-
-    async function processSurvey(
-        form
-    ) {
-
-        if (processing) {
-
-            return;
-
-        }
-
-
-        const signature =
-            getFormSignature(
-                form
-            );
-
-
-        if (
-            signature ===
-            lastFormSignature
-        ) {
-
-            return;
-
-        }
-
-
-        processing = true;
-
-
-        SEA.Logger.info(
-            "Feedback survey detected."
-        );
-
-
-        try {
-
-            const survey =
-                SEAFormReader
-                    .scanSurveyForm();
-
-
-            if (
-                !survey ||
-                !survey.questionCount
-            ) {
-
-                SEA.Logger.warn(
-                    "Could not read survey."
-                );
-
-                return;
-
-            }
-
-
-            console.log(
-                "[SEA][FORM] Survey:",
-                survey
-            );
-
-
-            const settings =
-                await getSettings();
-
-
-            if (
-                !settings.enabled
-            ) {
-
-                SEA.Logger.info(
-                    "Assistant is disabled."
-                );
-
-                lastFormSignature =
-                    signature;
-
-                return;
-
-            }
-
-
-            if (
-                !settings.autoFill
-            ) {
-
-                SEA.Logger.info(
-                    "Auto Fill is disabled."
-                );
-
-                lastFormSignature =
-                    signature;
-
-                return;
-
-            }
-
-
-            SEA.Logger.info(
-                "Using confirmed answer rules."
-            );
-
-
-            const result =
-                SEAFormFiller
-                    .fillFeedbackForm(
-                        ANSWERS
-                    );
-
-
-            console.log(
-                "[SEA][FORM] Fill result:",
-                result
-            );
-
-
-            if (!result.ok) {
-
-                SEA.Logger.warn(
-                    "Survey was not completely filled."
-                );
-
-
-                console.warn(
-                    "[SEA][FORM] Missing:",
-                    result.missing
-                );
-
-
-                lastFormSignature =
-                    signature;
-
-                return;
-
-            }
-
-
-            SEA.Logger.info(
-                "All configured questions filled."
-            );
-
-
-            const validation =
-                SEAFormFiller
-                    .validateForm();
-
-
-            console.log(
-                "[SEA][FORM] Validation:",
-                validation
-            );
-
-
-            if (!validation.ok) {
-
-                SEA.Logger.warn(
-                    "Required fields are missing."
-                );
-
-
-                console.warn(
-                    "[SEA][FORM] Missing:",
-                    validation.missing
-                );
-
-
-                lastFormSignature =
-                    signature;
-
-                return;
-
-            }
-
-
-            SEA.Logger.info(
-                "Form validation successful."
-            );
-
-
-            lastFormSignature =
-                signature;
-
-
-            /*
-             * Safe default:
-             * fill + validate, but don't submit.
-             */
-
-            if (
-                !settings.autoSubmit
-            ) {
-
-                SEA.Logger.info(
-                    "Auto Submit is OFF."
-                );
-
-
-                SEA.Logger.info(
-                    "Form is ready for manual review."
-                );
-
-
-                return;
-
-            }
-
-
-            if (
-                settings.askBeforeSubmit
-            ) {
-
-                SEA.Logger.info(
-                    "Ask-before-submit is enabled."
-                );
-
-
-                return;
-
-            }
-
-
-            SEA.Logger.info(
-                "Submitting survey..."
-            );
-
-
-            const submitResult =
-                SEAFormFiller
-                    .submitForm();
-
-
-            console.log(
-                "[SEA][FORM] Submit:",
-                submitResult
-            );
-
-
-            await wait(
-                settings.delayMs
-            );
-
-
-        } catch (error) {
-
-            SEA.Logger.error(
-                "Survey processing failed:",
-                error
-            );
-
-        } finally {
-
-            processing = false;
-
-        }
-
-    }
-
-
-    function processFeedbackList() {
-
-        if (
-            processing ||
-            navigationBusy
-        ) {
-
-            return;
-
-        }
-
-
-        const candidate =
-            SEAListScanner
-                .findPending();
-
-
-        if (!candidate) {
-
-            return;
-
-        }
-
-
-        navigationBusy =
-            true;
-
-
-        SEA.Logger.info(
-            "Pending feedback found."
-        );
-
+      if (settings.autoFill) {
+        const result = SEAFormFiller.fill(form, ANSWERS);
 
         console.log(
-            "[SEA][LIST] Candidate:",
-            {
-                type:
-                    candidate.type,
-
-                href:
-                    candidate.href,
-
-                text:
-                    candidate.text
-            }
+          `[SEA] Filled: ${result.filled}, Skipped: ${result.skipped}`
         );
+      }
 
+      await sleep(500);
 
-        try {
+      if (!SEAFormFiller.validate(form)) {
+        console.warn("[SEA] Validation failed. Some required answers are missing.");
+        return;
+      }
 
-            SEAListScanner
-                .openPending(
-                    candidate
-                );
+      console.log("[SEA] Form validation passed.");
 
+      if (!settings.autoSubmit) {
+        console.log("[SEA] Auto submit disabled.");
+        return;
+      }
 
-        } catch (error) {
+      await sleep(settings.delayMs);
 
-            SEA.Logger.error(
-                "Could not open feedback:",
-                error
-            );
+      const result = SEAFormFiller.clickNextOrSubmit(form);
 
+      console.log("[SEA] Action:", result.action);
 
-            navigationBusy =
-                false;
+      if (result.action === "next") {
+        console.log("[SEA] Moving to next question page.");
 
-        }
+        lastFormSignature = "";
 
+        await waitForNextForm();
+        return;
+      }
+
+      if (result.action === "submit") {
+        console.log("[SEA] Final submission clicked.");
+
+        lastFormSignature = "";
+
+        await waitForPageChange();
+
+        await sleep(2000);
+
+        processPage();
+      }
+
+    } catch (error) {
+      console.error("[SEA] Processing error:", error);
+    } finally {
+      processing = false;
     }
+  }
 
+  function waitForNextForm() {
+    return new Promise(resolve => {
+      let attempts = 0;
 
-    function scanPage() {
+      const timer = setInterval(() => {
+        attempts++;
 
-        const form =
-            SEA.ErpDetector
-                .getSurveyForm();
-
+        const form = document.querySelector("form.js_surveyform");
 
         if (form) {
-
-            navigationBusy =
-                false;
-
-
-            processSurvey(
-                form
-            );
-
-
-            return;
-
+          clearInterval(timer);
+          resolve(true);
+          return;
         }
 
+        if (attempts >= 30) {
+          clearInterval(timer);
+          resolve(false);
+        }
+      }, 500);
+    });
+  }
 
-        processFeedbackList();
+  function waitForPageChange() {
+    return new Promise(resolve => {
+      let attempts = 0;
+      const oldUrl = location.href;
 
-    }
+      const timer = setInterval(() => {
+        attempts++;
 
-
-    function startWatcher() {
-
-        if (!document.body) {
-
-            setTimeout(
-                startWatcher,
-                300
-            );
-
-            return;
-
+        if (location.href !== oldUrl) {
+          clearInterval(timer);
+          resolve(true);
+          return;
         }
 
+        if (document.querySelector("form.js_surveyform")) {
+          clearInterval(timer);
+          resolve(true);
+          return;
+        }
 
-        const observer =
-            new MutationObserver(
-                function () {
+        if (attempts >= 30) {
+          clearInterval(timer);
+          resolve(false);
+        }
+      }, 500);
+    });
+  }
 
-                    scanPage();
+  async function processPendingForm() {
+    if (processing) return;
 
-                }
-            );
-
-
-        observer.observe(
-            document.body,
-            {
-
-                childList:
-                    true,
-
-                subtree:
-                    true
-
-            }
-        );
-
-
-        scanPage();
-
-
-        SEA.Logger.info(
-            "Automatic feedback watcher active."
-        );
-
+    if (isSurveyPage()) {
+      await processSurvey();
+      return;
     }
 
+    if (!window.SEAListScanner) {
+      console.warn("[SEA] List scanner not available.");
+      return;
+    }
 
-    window.SEA =
-        window.SEA || {};
+    const pending = SEAListScanner.findPending();
 
+    if (!pending) {
+      console.log("[SEA] No pending feedback form found.");
+      return;
+    }
 
-    window.SEA.status =
-        function () {
+    console.log("[SEA] Pending feedback found.");
 
-            return {
+    await sleep(settings.delayMs);
 
-                url:
-                    location.href,
+    SEAListScanner.openPending(pending);
+  }
 
-                erp:
-                    SEA.ErpDetector
-                        .isErpHost(),
+  function processPage() {
+    setTimeout(() => {
+      processPendingForm();
+    }, 500);
+  }
 
-                survey:
-                    SEA.ErpDetector
-                        .isSurveyPage(),
+  async function start() {
+    await loadSettings();
 
-                listScanner:
-                    !!window.SEAListScanner,
+    console.log("[SEA] Automatic feedback assistant started.");
 
-                formReader:
-                    !!window.SEAFormReader,
+    processPage();
 
-                formFiller:
-                    !!window.SEAFormFiller,
+    const observer = new MutationObserver(() => {
+      if (!processing) {
+        processPage();
+      }
+    });
 
-                processing,
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
 
-                navigationBusy
+    window.addEventListener("load", processPage);
 
-            };
+    setInterval(() => {
+      if (!processing) {
+        processPage();
+      }
+    }, 3000);
+  }
 
-        };
-
-
-    window.SEA.scan =
-        scanPage;
-
-
-    startWatcher();
+  start();
 
 })();
