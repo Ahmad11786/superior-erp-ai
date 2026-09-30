@@ -21,25 +21,29 @@
         return document.querySelector("form.js_surveyform");
     }
 
-    function processForm() {
-        const form = findFeedbackForm();
+   function processForm() {
+    const form = findFeedbackForm();
 
-        if (!form) {
-            return;
-        }
-
-        if (form === lastForm) {
-            return;
-        }
-
-        lastForm = form;
-
-        console.log("[SEA][FORM] Feedback form detected");
-
-        const forms = window.SEAFormReader.scanForms();
-
-        console.log("[SEA][FORM] Form data:", forms);
+    if (!form) {
+        return;
     }
+
+    if (form === lastForm) {
+        return;
+    }
+
+    lastForm = form;
+
+    console.log("[SEA][FORM] Feedback form detected");
+
+    const forms = window.SEAFormReader.scanForms();
+
+    console.log("[SEA][FORM] Form data:", forms);
+
+    const filled = window.SEAFormFiller.fillFeedbackForm(5);
+
+    console.log("[SEA][FORM] Auto-fill result:", filled);
+}
 
     function testAutoFill() {
         const form = findFeedbackForm();
