@@ -1,81 +1,18 @@
+// Content script entry point. Phase 1: detect ERP, answer status requests from the popup.
 (function () {
-    "use strict";
+  SEA.Logger.info("Content script loaded");
+  if (SEA.ErpDetector.isErpHost()) SEA.Logger.info("ERP detected");
 
-    console.log("[SEA][INFO] Content script loaded");
-
-    if (!window.SEAFormReader) {
-        console.error("[SEA][ERROR] Form reader not loaded");
-        return;
+  chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+    if (message && message.type === SEA.MSG.GET_STATUS) {
+      sendResponse({ ok: true, status: SEA.ErpDetector.getStatus() });
     }
+    return false;
+  });
 
-    if (!window.SEAFormFiller) {
-        console.error("[SEA][ERROR] Form filler not loaded");
-        return;
-    }
-
-    console.log("[SEA][INFO] All modules loaded");
-
-    let lastForm = null;
-
-    function findFeedbackForm() {
-        return document.querySelector("form.js_surveyform");
-    }
-
-   function processForm() {
-    const form = findFeedbackForm();
-
-    if (!form) {
-        return;
-    }
-
-    if (form === lastForm) {
-        return;
-    }
-
-    lastForm = form;
-
-    console.log("[SEA][FORM] Feedback form detected");
-
-    const forms = window.SEAFormReader.scanForms();
-
-    console.log("[SEA][FORM] Form data:", forms);
-
-    const filled = window.SEAFormFiller.fillFeedbackForm(5);
-
-    console.log("[SEA][FORM] Auto-fill result:", filled);
-}
-
-    function testAutoFill() {
-        const form = findFeedbackForm();
-
-        if (!form) {
-            console.log("[SEA][TEST] No feedback form found.");
-            return false;
-        }
-
-        const result = window.SEAFormFiller.fillFeedbackForm(5);
-
-        console.log("[SEA][TEST] Auto fill result:", result);
-
-        return result;
-    }
-
-    window.SEA = {
-        testAutoFill,
-        scan: processForm
-    };
-
-    const observer = new MutationObserver(() => {
-        processForm();
-    });
-
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    processForm();
-
-    console.log("[SEA][INFO] Test command ready");
-    console.log("[SEA][INFO] Dynamic form watcher active");
+  try {
+    chrome.runtime.sendMessage({ type: SEA.MSG.CONTENT_READY, url: location.origin + location.pathname });
+  } catch (e) {
+    SEA.Logger.warn("Background not reachable", String(e));
+  }
 })();
