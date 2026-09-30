@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Superior ERP AI</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1>Superior ERP AI</h1>
+  <section>
+    <h2>ERP Status</h2>
+    <p><span id="dot" class="dot off"></span><span id="erpStatus">Checking…</span></p>
+    <p class="muted" id="pageInfo"></p>
+  </section>
+  <section>
+    <h2>Student</h2>
+    <p class="muted">Identity detection is added in Phase 4.</p>
+  </section>
+  <section>
+    <h2>Controls</h2>
+    <div class="row">
+      <button disabled>Scan</button>
+      <button disabled>Start</button>
+      <button disabled>Pause</button>
+      <button disabled>Stop</button>
+    </div>
+    <p class="muted">Controls are enabled in later phases.</p>
+  </section>
+  <section>
+    <p>Auto Fill: <b id="autoFill">-</b> &nbsp; Auto Submit: <b id="autoSubmit">-</b></p>
+    <button id="openOptions">Settings</button>
+    <button id="pingBtn">Test background</button>
+    <span id="pingResult" class="muted"></span>
+  </section>
+  <p class="muted">Version <span id="version">0.1.0</span></p>
+  <script src="popup.js"></script>
+</body>
+</html>

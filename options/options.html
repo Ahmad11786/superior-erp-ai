@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Superior ERP AI — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <h1>Superior ERP AI — Settings</h1>
+  <nav>
+    <span class="tab active">Automation</span>
+    <span class="tab disabled">Profile</span>
+    <span class="tab disabled">Feedback</span>
+    <span class="tab disabled">AI</span>
+    <span class="tab disabled">Mappings</span>
+    <span class="tab disabled">History</span>
+    <span class="tab disabled">Advanced</span>
+  </nav>
+  <p class="muted">Only the Automation tab is active in Phase 1. Other tabs arrive in later phases.</p>
+  <label><input type="checkbox" id="autoFill"> Auto Fill</label>
+  <label><input type="checkbox" id="autoSubmit"> Auto Submit (keep OFF until Phase 7+)</label>
+  <label><input type="checkbox" id="verifyIdentity"> Verify ERP identity before automation</label>
+  <label><input type="checkbox" id="askBeforeSubmit"> Ask before submit</label>
+  <label><input type="checkbox" id="notifications"> Notifications</label>
+  <label><input type="checkbox" id="debugMode"> Debug mode</label>
+  <button id="save">Save</button> <span id="msg" class="muted"></span>
+  <script src="options.js"></script>
+</body>
+</html>
