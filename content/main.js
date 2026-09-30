@@ -1,16 +1,18 @@
 (function () {
     "use strict";
 
-    SEA.Logger.info("Content script loaded");
+    console.log("[SEA][INFO] Content script loaded");
 
     if (!SEA.ErpDetector.isErpHost()) {
+        console.log("[SEA][INFO] Not an ERP page");
         return;
     }
 
-    SEA.Logger.info("ERP detected");
+    console.log("[SEA][INFO] ERP detected");
 
     let lastForm = null;
     let processing = false;
+    let watcherStarted = false;
 
     const DEFAULT_SETTINGS = {
         autoFill: true,
@@ -43,6 +45,45 @@
         );
     }
 
+    function modulesReady() {
+        if (!window.SEAFormReader) {
+            console.log(
+                "[SEA][WAIT] Form reader is not loaded yet."
+            );
+
+            return false;
+        }
+
+        if (typeof window.SEAFormReader.scanForms !== "function") {
+            console.log(
+                "[SEA][WAIT] Form reader scanForms is not ready yet."
+            );
+
+            return false;
+        }
+
+        if (!window.SEAFormFiller) {
+            console.log(
+                "[SEA][WAIT] Form filler is not loaded yet."
+            );
+
+            return false;
+        }
+
+        if (
+            typeof window.SEAFormFiller.fillFeedbackForm !==
+            "function"
+        ) {
+            console.log(
+                "[SEA][WAIT] Form filler is not ready yet."
+            );
+
+            return false;
+        }
+
+        return true;
+    }
+
     async function processForm() {
         if (processing) {
             return;
@@ -58,8 +99,11 @@
             return;
         }
 
+        if (!modulesReady()) {
+            return;
+        }
+
         processing = true;
-        lastForm = form;
 
         console.log(
             "[SEA][FORM] Feedback form detected"
@@ -76,10 +120,17 @@
 
             const settings = await getSettings();
 
+            console.log(
+                "[SEA][SETTINGS]",
+                settings
+            );
+
             if (!settings.autoFill) {
                 console.log(
                     "[SEA][INFO] Auto Fill is disabled."
                 );
+
+                lastForm = form;
                 return;
             }
 
@@ -89,6 +140,8 @@
                 console.warn(
                     "[SEA][INFO] No feedback answers configured."
                 );
+
+                lastForm = form;
                 return;
             }
 
@@ -106,42 +159,57 @@
                 fillResult
             );
 
-            if (!fillResult.ok) {
+            if (!fillResult || !fillResult.ok) {
                 console.warn(
                     "[SEA][STATE] Form was not completely filled.",
-                    fillResult.missing
+                    fillResult
                 );
+
+                lastForm = form;
                 return;
             }
 
             console.log(
-                "[SEA][STATE] Validating..."
+                "[SEA][STATE] Form filled successfully."
             );
 
-            const validation =
-                window.SEAFormFiller.validateForm();
-
-            console.log(
-                "[SEA][STATE] Validation:",
-                validation
-            );
-
-            if (!validation.ok) {
-                console.warn(
-                    "[SEA][STATE] Validation failed.",
-                    validation.missing
+            if (
+                typeof window.SEAFormFiller.validateForm ===
+                "function"
+            ) {
+                console.log(
+                    "[SEA][STATE] Validating..."
                 );
-                return;
-            }
 
-            console.log(
-                "[SEA][STATE] Form ready."
-            );
+                const validation =
+                    window.SEAFormFiller.validateForm();
+
+                console.log(
+                    "[SEA][STATE] Validation:",
+                    validation
+                );
+
+                if (!validation || !validation.ok) {
+                    console.warn(
+                        "[SEA][STATE] Validation failed.",
+                        validation
+                    );
+
+                    lastForm = form;
+                    return;
+                }
+
+                console.log(
+                    "[SEA][STATE] Form validation successful."
+                );
+            }
 
             if (!settings.autoSubmit) {
                 console.log(
                     "[SEA][INFO] Auto Submit is disabled."
                 );
+
+                lastForm = form;
                 return;
             }
 
@@ -149,6 +217,20 @@
                 console.log(
                     "[SEA][INFO] Ask Before Submit is enabled."
                 );
+
+                lastForm = form;
+                return;
+            }
+
+            if (
+                typeof window.SEAFormFiller.submitForm !==
+                "function"
+            ) {
+                console.error(
+                    "[SEA][ERROR] submitForm function not found."
+                );
+
+                lastForm = form;
                 return;
             }
 
@@ -156,35 +238,49 @@
                 "[SEA][STATE] Automatically submitting..."
             );
 
-            window.SEAFormFiller.submitForm();
+            const submitResult =
+                window.SEAFormFiller.submitForm();
+
+            console.log(
+                "[SEA][STATE] Submit result:",
+                submitResult
+            );
+
+            lastForm = form;
 
         } catch (error) {
             console.error(
                 "[SEA][ERROR] Form processing failed:",
                 error
             );
+
         } finally {
             processing = false;
         }
     }
 
     function startWatcher() {
-        if (!document.documentElement) {
+        if (watcherStarted) {
             return;
         }
 
-        const observer = new MutationObserver(() => {
-            processForm();
-        });
+        watcherStarted = true;
 
-        observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true
-        });
+        console.log(
+            "[SEA][INFO] Starting feedback form watcher..."
+        );
 
-        setInterval(() => {
-            processForm();
-        }, 1000);
+        const observer =
+            new MutationObserver(function () {
+                processForm();
+            });
+
+        if (document.body) {
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
 
         processForm();
 
@@ -193,33 +289,58 @@
         );
     }
 
-    chrome.runtime.onMessage.addListener(
-        function (message, sender, sendResponse) {
-            if (
-                message &&
-                message.type === SEA.MSG.GET_STATUS
-            ) {
-                sendResponse({
-                    ok: true,
-                    status: SEA.ErpDetector.getStatus()
-                });
+    function waitForModules() {
+        let attempts = 0;
+
+        const interval = setInterval(function () {
+            attempts++;
+
+            if (modulesReady()) {
+                clearInterval(interval);
+
+                console.log(
+                    "[SEA][INFO] All form modules are ready."
+                );
+
+                startWatcher();
+
+                return;
             }
 
-            return false;
-        }
-    );
+            if (attempts >= 100) {
+                clearInterval(interval);
 
-    try {
-        chrome.runtime.sendMessage({
-            type: SEA.MSG.CONTENT_READY,
-            url: location.origin + location.pathname
-        });
-    } catch (e) {
-        SEA.Logger.warn(
-            "Background not reachable",
-            String(e)
-        );
+                console.error(
+                    "[SEA][ERROR] Form modules did not load."
+                );
+            }
+
+        }, 100);
     }
 
-    startWatcher();
+    window.SEA = window.SEA || {};
+
+    window.SEA.scan = processForm;
+
+    window.SEA.getStatus = function () {
+        return {
+            erp: true,
+            formDetected: !!findFeedbackForm(),
+            readerReady:
+                !!window.SEAFormReader &&
+                typeof window.SEAFormReader.scanForms ===
+                    "function",
+            fillerReady:
+                !!window.SEAFormFiller &&
+                typeof window.SEAFormFiller.fillFeedbackForm ===
+                    "function"
+        };
+    };
+
+    waitForModules();
+
+    console.log(
+        "[SEA][INFO] Main controller initialized."
+    );
+
 })();
