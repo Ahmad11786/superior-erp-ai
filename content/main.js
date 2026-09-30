@@ -3,11 +3,6 @@
 
     console.log("[SEA][INFO] Content script loaded");
 
-    if (!window.SEAERPDetector) {
-        console.error("[SEA][ERROR] ERP detector not loaded");
-        return;
-    }
-
     if (!window.SEAFormReader) {
         console.error("[SEA][ERROR] Form reader not loaded");
         return;
@@ -36,6 +31,7 @@
         if (form === lastForm) {
             return;
         }
+
         lastForm = form;
 
         console.log("[SEA][FORM] Feedback form detected");
