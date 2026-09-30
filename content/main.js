@@ -1,18 +1,34 @@
-// Content script entry point. Phase 1: detect ERP, answer status requests from the popup.
 (function () {
-  SEA.Logger.info("Content script loaded");
-  if (SEA.ErpDetector.isErpHost()) SEA.Logger.info("ERP detected");
+    "use strict";
 
-  chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-    if (message && message.type === SEA.MSG.GET_STATUS) {
-      sendResponse({ ok: true, status: SEA.ErpDetector.getStatus() });
+    console.log("[SEA][INFO] Content script loaded");
+
+    if (!window.SEAERPDetector) {
+        console.error("[SEA][ERROR] ERP detector not loaded");
+        return;
     }
-    return false;
-  });
 
-  try {
-    chrome.runtime.sendMessage({ type: SEA.MSG.CONTENT_READY, url: location.origin + location.pathname });
-  } catch (e) {
-    SEA.Logger.warn("Background not reachable", String(e));
-  }
+    if (!window.SEAFormReader) {
+        console.error("[SEA][ERROR] Form reader not loaded");
+        return;
+    }
+
+    if (!window.SEAFormFiller) {
+        console.error("[SEA][ERROR] Form filler not loaded");
+        return;
+    }
+
+    console.log("[SEA][INFO] All modules loaded");
+
+    function testAutoFill() {
+        const result = window.SEAFormFiller.fillFeedbackForm(5);
+
+        console.log("[SEA][TEST] Auto fill result:", result);
+    }
+
+    window.SEA = {
+        testAutoFill
+    };
+
+    console.log("[SEA][INFO] Test command ready");
 })();
