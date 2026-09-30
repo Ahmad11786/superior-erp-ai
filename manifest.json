@@ -14,6 +14,7 @@
         "utils/logger.js",
         "content/erp-detector.js",
 "content/form-reader.js",
+"content/form-filler.js",
 "content/main.js"
       ],
       "run_at": "document_idle"
