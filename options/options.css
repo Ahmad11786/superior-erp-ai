@@ -1,8 +1,0 @@
-body { font-family: Segoe UI, Arial, sans-serif; max-width: 560px; margin: 24px auto; color: #1f2937; }
-nav { display: flex; gap: 8px; margin-bottom: 12px; }
-.tab { padding: 4px 10px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
-.tab.active { background: #1f2937; color: #fff; }
-.tab.disabled { color: #9ca3af; }
-label { display: block; margin: 8px 0; }
-button { padding: 6px 14px; margin-top: 10px; }
-.muted { color: #6b7280; font-size: 12px; }

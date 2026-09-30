@@ -2,40 +2,28 @@
 
     "use strict";
 
+
     SEA.Logger.info(
-        "Content script loaded"
+        "Superior ERP AI started."
     );
+
 
     if (
         !SEA.ErpDetector.isErpHost()
     ) {
-        SEA.Logger.warn(
-            "Not a Superior ERP page."
-        );
+
         return;
+
     }
 
-    SEA.Logger.info(
-        "Superior ERP detected."
-    );
-
-    let currentForm = null;
-    let processing = false;
-
-    const DEFAULT_SETTINGS = {
-        autoFill: true,
-        autoSubmit: false,
-        askBeforeSubmit: true,
-        debugMode: false
-    };
 
     /*
-     * Confirmed answers for the current test form.
+     * Explicit answer rules.
      *
-     * Rating:
-     * 5 = highest rating
+     * These are the two questions you already
+     * confirmed from the actual ERP form.
      */
-    const CONFIRMED_ANSWERS = {
+    const ANSWERS = {
 
         "The teacher is kind, respectful, and easy to approach.": 5,
 
@@ -44,50 +32,14 @@
     };
 
 
-    function getForm() {
+    let processing = false;
 
-        return document.querySelector(
-            "form.js_surveyform"
-        );
+    let navigationBusy = false;
 
-    }
-
-
-    function modulesReady() {
-
-        if (
-            !window.SEAFormReader ||
-            typeof window.SEAFormReader.scanSurveyForm !==
-                "function"
-        ) {
-            return false;
-        }
-
-        if (
-            !window.SEAFormFiller ||
-            typeof window.SEAFormFiller.fillFeedbackForm !==
-                "function"
-        ) {
-            return false;
-        }
-
-        if (
-            typeof window.SEAFormFiller.validateForm !==
-                "function"
-        ) {
-            return false;
-        }
-
-        return true;
-    }
+    let lastFormSignature = "";
 
 
     async function getSettings() {
-
-        /*
-         * Extension storage is used only for settings.
-         * The actual test answers are stored above.
-         */
 
         try {
 
@@ -96,20 +48,22 @@
                     "settings"
                 );
 
+
             return Object.assign(
                 {},
-                DEFAULT_SETTINGS,
+                SEA.DEFAULT_SETTINGS,
                 data.settings || {}
             );
 
         } catch (error) {
 
             SEA.Logger.warn(
-                "Could not read settings. Using defaults."
+                "Settings unavailable. Using defaults."
             );
 
+
             return {
-                ...DEFAULT_SETTINGS
+                ...SEA.DEFAULT_SETTINGS
             };
 
         }
@@ -117,54 +71,110 @@
     }
 
 
-    function processForm() {
+    function wait(ms) {
+
+        return new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    ms
+                )
+        );
+
+    }
+
+
+    function getFormSignature(
+        form
+    ) {
+
+        const questions =
+            [
+                ...form.querySelectorAll(
+                    ".js_question-wrapper tbody tr"
+                )
+            ]
+            .map(
+                row =>
+                    (
+                        row
+                            .querySelector("th")
+                            ?.innerText || ""
+                    )
+                    .replace(/\s+/g, " ")
+                    .trim()
+            )
+            .join("|");
+
+
+        return [
+
+            location.href,
+
+            form.action || "",
+
+            form.name || "",
+
+            questions
+
+        ].join("::");
+
+    }
+
+
+    async function processSurvey(
+        form
+    ) {
 
         if (processing) {
+
             return;
+
         }
 
-        const form = getForm();
 
-        if (!form) {
-            return;
-        }
-
-        if (form === currentForm) {
-            return;
-        }
-
-        if (!modulesReady()) {
-
-            SEA.Logger.warn(
-                "Form modules are not ready yet."
+        const signature =
+            getFormSignature(
+                form
             );
 
+
+        if (
+            signature ===
+            lastFormSignature
+        ) {
+
             return;
+
         }
+
 
         processing = true;
 
+
         SEA.Logger.info(
-            "Feedback form detected."
+            "Feedback survey detected."
         );
+
 
         try {
 
-            /*
-             * Read the actual ERP survey.
-             */
-
             const survey =
-                window.SEAFormReader
+                SEAFormReader
                     .scanSurveyForm();
 
-            if (!survey) {
+
+            if (
+                !survey ||
+                !survey.questionCount
+            ) {
 
                 SEA.Logger.warn(
-                    "Unable to read survey."
+                    "Could not read survey."
                 );
 
                 return;
+
             }
 
 
@@ -174,265 +184,298 @@
             );
 
 
-            /*
-             * Show detected questions.
-             */
+            const settings =
+                await getSettings();
+
+
+            if (
+                !settings.enabled
+            ) {
+
+                SEA.Logger.info(
+                    "Assistant is disabled."
+                );
+
+                lastFormSignature =
+                    signature;
+
+                return;
+
+            }
+
+
+            if (
+                !settings.autoFill
+            ) {
+
+                SEA.Logger.info(
+                    "Auto Fill is disabled."
+                );
+
+                lastFormSignature =
+                    signature;
+
+                return;
+
+            }
+
+
+            SEA.Logger.info(
+                "Using confirmed answer rules."
+            );
+
+
+            const result =
+                SEAFormFiller
+                    .fillFeedbackForm(
+                        ANSWERS
+                    );
+
 
             console.log(
-                "[SEA][FORM] Questions:"
+                "[SEA][FORM] Fill result:",
+                result
             );
 
-            survey.questions.forEach(
-                function (question) {
 
-                    question.rows.forEach(
-                        function (row) {
+            if (!result.ok) {
 
-                            console.log(
-                                "Question:",
-                                row.question
-                            );
+                SEA.Logger.warn(
+                    "Survey was not completely filled."
+                );
 
-                        }
-                    );
 
-                }
+                console.warn(
+                    "[SEA][FORM] Missing:",
+                    result.missing
+                );
+
+
+                lastFormSignature =
+                    signature;
+
+                return;
+
+            }
+
+
+            SEA.Logger.info(
+                "All configured questions filled."
             );
+
+
+            const validation =
+                SEAFormFiller
+                    .validateForm();
+
+
+            console.log(
+                "[SEA][FORM] Validation:",
+                validation
+            );
+
+
+            if (!validation.ok) {
+
+                SEA.Logger.warn(
+                    "Required fields are missing."
+                );
+
+
+                console.warn(
+                    "[SEA][FORM] Missing:",
+                    validation.missing
+                );
+
+
+                lastFormSignature =
+                    signature;
+
+                return;
+
+            }
+
+
+            SEA.Logger.info(
+                "Form validation successful."
+            );
+
+
+            lastFormSignature =
+                signature;
 
 
             /*
-             * Get settings.
+             * Safe default:
+             * fill + validate, but don't submit.
              */
 
-            getSettings().then(
-                function (settings) {
+            if (
+                !settings.autoSubmit
+            ) {
 
-                    if (!settings.autoFill) {
+                SEA.Logger.info(
+                    "Auto Submit is OFF."
+                );
 
-                        SEA.Logger.info(
-                            "Auto Fill is disabled."
-                        );
 
-                        currentForm = form;
+                SEA.Logger.info(
+                    "Form is ready for manual review."
+                );
 
-                        processing = false;
 
-                        return;
-                    }
+                return;
 
+            }
 
-                    /*
-                     * Use confirmed answers.
-                     */
 
-                    const answers =
-                        CONFIRMED_ANSWERS;
+            if (
+                settings.askBeforeSubmit
+            ) {
 
+                SEA.Logger.info(
+                    "Ask-before-submit is enabled."
+                );
 
-                    if (
-                        !Object.keys(
-                            answers
-                        ).length
-                    ) {
 
-                        SEA.Logger.warn(
-                            "No confirmed answers found."
-                        );
+                return;
 
-                        currentForm = form;
+            }
 
-                        processing = false;
 
-                        return;
-                    }
-
-
-                    SEA.Logger.info(
-                        "Confirmed answers found."
-                    );
-
-
-                    /*
-                     * Fill the form.
-                     */
-
-                    SEA.Logger.info(
-                        "Filling feedback form..."
-                    );
-
-                    const result =
-                        window.SEAFormFiller
-                            .fillFeedbackForm(
-                                answers
-                            );
-
-
-                    console.log(
-                        "[SEA][FORM] Fill result:",
-                        result
-                    );
-
-
-                    /*
-                     * Stop if some question
-                     * does not have a confirmed answer.
-                     */
-
-                    if (!result.ok) {
-
-                        SEA.Logger.warn(
-                            "Form was not completely filled."
-                        );
-
-                        console.warn(
-                            "[SEA][FORM] Missing:",
-                            result.missing
-                        );
-
-                        currentForm = form;
-
-                        processing = false;
-
-                        return;
-                    }
-
-
-                    SEA.Logger.info(
-                        "All confirmed questions filled."
-                    );
-
-
-                    /*
-                     * Validate required fields.
-                     */
-
-                    const validation =
-                        window.SEAFormFiller
-                            .validateForm();
-
-
-                    console.log(
-                        "[SEA][FORM] Validation:",
-                        validation
-                    );
-
-
-                    if (!validation.ok) {
-
-                        SEA.Logger.warn(
-                            "Form validation failed."
-                        );
-
-                        console.warn(
-                            "[SEA][FORM] Missing required fields:",
-                            validation.missing
-                        );
-
-                        currentForm = form;
-
-                        processing = false;
-
-                        return;
-                    }
-
-
-                    SEA.Logger.info(
-                        "Form validation successful."
-                    );
-
-
-                    /*
-                     * Do not submit automatically
-                     * unless explicitly enabled.
-                     */
-
-                    if (
-                        !settings.autoSubmit
-                    ) {
-
-                        SEA.Logger.info(
-                            "Auto Submit is OFF."
-                        );
-
-                        SEA.Logger.info(
-                            "Form is ready for manual submission."
-                        );
-
-                        currentForm = form;
-
-                        processing = false;
-
-                        return;
-                    }
-
-
-                    /*
-                     * Ask-before-submit protection.
-                     */
-
-                    if (
-                        settings.askBeforeSubmit
-                    ) {
-
-                        SEA.Logger.info(
-                            "Waiting for submission confirmation."
-                        );
-
-                        currentForm = form;
-
-                        processing = false;
-
-                        return;
-                    }
-
-
-                    /*
-                     * Submit.
-                     */
-
-                    SEA.Logger.info(
-                        "Submitting feedback form..."
-                    );
-
-                    const submitResult =
-                        window.SEAFormFiller
-                            .submitForm();
-
-
-                    console.log(
-                        "[SEA][FORM] Submit result:",
-                        submitResult
-                    );
-
-
-                    currentForm = form;
-
-                    setTimeout(
-                        function () {
-
-                            processing = false;
-
-                            SEA.Logger.info(
-                                "Ready for next feedback form."
-                            );
-
-                        },
-                        1500
-                    );
-
-                }
+            SEA.Logger.info(
+                "Submitting survey..."
             );
+
+
+            const submitResult =
+                SEAFormFiller
+                    .submitForm();
+
+
+            console.log(
+                "[SEA][FORM] Submit:",
+                submitResult
+            );
+
+
+            await wait(
+                settings.delayMs
+            );
+
 
         } catch (error) {
 
             SEA.Logger.error(
-                "Form processing failed:",
+                "Survey processing failed:",
                 error
             );
+
+        } finally {
 
             processing = false;
 
         }
+
+    }
+
+
+    function processFeedbackList() {
+
+        if (
+            processing ||
+            navigationBusy
+        ) {
+
+            return;
+
+        }
+
+
+        const candidate =
+            SEAListScanner
+                .findPending();
+
+
+        if (!candidate) {
+
+            return;
+
+        }
+
+
+        navigationBusy =
+            true;
+
+
+        SEA.Logger.info(
+            "Pending feedback found."
+        );
+
+
+        console.log(
+            "[SEA][LIST] Candidate:",
+            {
+                type:
+                    candidate.type,
+
+                href:
+                    candidate.href,
+
+                text:
+                    candidate.text
+            }
+        );
+
+
+        try {
+
+            SEAListScanner
+                .openPending(
+                    candidate
+                );
+
+
+        } catch (error) {
+
+            SEA.Logger.error(
+                "Could not open feedback:",
+                error
+            );
+
+
+            navigationBusy =
+                false;
+
+        }
+
+    }
+
+
+    function scanPage() {
+
+        const form =
+            SEA.ErpDetector
+                .getSurveyForm();
+
+
+        if (form) {
+
+            navigationBusy =
+                false;
+
+
+            processSurvey(
+                form
+            );
+
+
+            return;
+
+        }
+
+
+        processFeedbackList();
 
     }
 
@@ -443,10 +486,11 @@
 
             setTimeout(
                 startWatcher,
-                250
+                300
             );
 
             return;
+
         }
 
 
@@ -454,7 +498,7 @@
             new MutationObserver(
                 function () {
 
-                    processForm();
+                    scanPage();
 
                 }
             );
@@ -463,81 +507,26 @@
         observer.observe(
             document.body,
             {
-                childList: true,
-                subtree: true
+
+                childList:
+                    true,
+
+                subtree:
+                    true
+
             }
         );
 
 
-        processForm();
+        scanPage();
 
 
         SEA.Logger.info(
-            "Dynamic feedback form watcher active."
+            "Automatic feedback watcher active."
         );
 
     }
 
-
-    function waitForModules() {
-
-        let attempts = 0;
-
-
-        const timer =
-            setInterval(
-                function () {
-
-                    attempts++;
-
-
-                    if (
-                        modulesReady()
-                    ) {
-
-                        clearInterval(
-                            timer
-                        );
-
-
-                        SEA.Logger.info(
-                            "All form modules ready."
-                        );
-
-
-                        startWatcher();
-
-
-                        return;
-
-                    }
-
-
-                    if (
-                        attempts >= 100
-                    ) {
-
-                        clearInterval(
-                            timer
-                        );
-
-
-                        SEA.Logger.error(
-                            "Form modules failed to load."
-                        );
-
-                    }
-
-                },
-                100
-            );
-
-    }
-
-
-    /*
-     * Debug/status function.
-     */
 
     window.SEA =
         window.SEA || {};
@@ -548,43 +537,39 @@
 
             return {
 
+                url:
+                    location.href,
+
                 erp:
                     SEA.ErpDetector
                         .isErpHost(),
 
-                form:
-                    !!getForm(),
+                survey:
+                    SEA.ErpDetector
+                        .isSurveyPage(),
 
-                reader:
+                listScanner:
+                    !!window.SEAListScanner,
+
+                formReader:
                     !!window.SEAFormReader,
 
-                filler:
+                formFiller:
                     !!window.SEAFormFiller,
 
-                processing:
+                processing,
 
-                    processing,
-
-                confirmedAnswers:
-
-                    Object.keys(
-                        CONFIRMED_ANSWERS
-                    ).length
+                navigationBusy
 
             };
 
         };
 
 
-    /*
-     * Manually scan the current form.
-     */
-
     window.SEA.scan =
-        processForm;
+        scanPage;
 
 
-    waitForModules();
+    startWatcher();
 
 })();
-

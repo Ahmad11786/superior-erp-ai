@@ -1,21 +1,66 @@
 "use strict";
 
+
 const status =
-    document.getElementById("status");
+    document.getElementById(
+        "status"
+    );
+
 
 const enableBtn =
-    document.getElementById("enableBtn");
+    document.getElementById(
+        "enableBtn"
+    );
+
 
 const disableBtn =
-    document.getElementById("disableBtn");
+    document.getElementById(
+        "disableBtn"
+    );
 
 
-function updateStatus(enabled) {
+async function getSettings() {
+
+    const data =
+        await chrome.storage.local.get(
+            "settings"
+        );
+
+
+    return Object.assign(
+
+        {
+            enabled:
+                true,
+
+            autoFill:
+                true,
+
+            autoSubmit:
+                false,
+
+            askBeforeSubmit:
+                true,
+
+            delayMs:
+                1500
+        },
+
+        data.settings || {}
+
+    );
+
+}
+
+
+function updateStatus(
+    enabled
+) {
 
     if (enabled) {
 
         status.textContent =
-            "Auto Fill: ON";
+            "Assistant: ON";
 
         status.className =
             "status on";
@@ -23,74 +68,78 @@ function updateStatus(enabled) {
     } else {
 
         status.textContent =
-            "Auto Fill: OFF";
+            "Assistant: OFF";
 
         status.className =
             "status off";
+
     }
+
 }
 
 
-async function loadSettings() {
-
-    const data =
-        await chrome.storage.local.get(
-            "settings"
-        );
+async function setEnabled(
+    enabled
+) {
 
     const settings =
-        data.settings || {};
+        await getSettings();
+
+
+    settings.enabled =
+        enabled;
+
+
+    settings.autoFill =
+        enabled;
+
+
+    await chrome.storage.local.set({
+
+        settings
+
+    });
+
 
     updateStatus(
-        settings.autoFill === true
+        enabled
     );
+
 }
 
 
 enableBtn.addEventListener(
     "click",
-    async function () {
+    function () {
 
-        const data =
-            await chrome.storage.local.get(
-                "settings"
-            );
+        setEnabled(
+            true
+        );
 
-        const settings =
-            data.settings || {};
-
-        settings.autoFill = true;
-
-        await chrome.storage.local.set({
-            settings
-        });
-
-        updateStatus(true);
     }
 );
 
 
 disableBtn.addEventListener(
     "click",
-    async function () {
+    function () {
 
-        const data =
-            await chrome.storage.local.get(
-                "settings"
-            );
+        setEnabled(
+            false
+        );
 
-        const settings =
-            data.settings || {};
-
-        settings.autoFill = false;
-
-        await chrome.storage.local.set({
-            settings
-        });
-
-        updateStatus(false);
     }
 );
 
 
-loadSettings();
+getSettings()
+    .then(
+        function (settings) {
+
+            updateStatus(
+                settings.enabled &&
+                settings.autoFill
+            );
+
+        }
+    );

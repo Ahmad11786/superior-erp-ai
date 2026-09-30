@@ -2,114 +2,109 @@
 
     "use strict";
 
-    function cleanText(text) {
+
+    function clean(text) {
+
         return (text || "")
             .replace(/\s+/g, " ")
             .trim();
+
     }
 
-    function getQuestionTitle(wrapper) {
 
-        const heading =
-            wrapper.querySelector("h1, h2, h3, h4, h5, h6");
-
-        if (heading) {
-            return cleanText(heading.innerText);
-        }
-
-        return "";
-    }
-
-    function getRows(wrapper) {
-
-        return [...wrapper.querySelectorAll("tbody tr")];
-    }
-
-    function readRow(row) {
+    function readRow(
+        row,
+        index
+    ) {
 
         const questionCell =
             row.querySelector("th");
 
-        const questionText =
-            cleanText(
+
+        const question =
+            clean(
                 questionCell
                     ? questionCell.innerText
                     : ""
             );
 
+
         const radios =
-            [...row.querySelectorAll(
-                'input[type="radio"]'
-            )];
+            [
+                ...row.querySelectorAll(
+                    'input[type="radio"]'
+                )
+            ];
 
-        const options = radios.map(
-            (radio, index) => {
 
-                const cell =
-                    radio.closest("td");
-
-                const text =
-                    cleanText(
-                        cell
-                            ? cell.innerText
-                            : ""
-                    );
-
-                const header =
+        const headers =
+            [
+                ...(
                     row
                         .closest("table")
                         ?.querySelectorAll(
                             "thead th"
-                        );
+                        ) || []
+                )
+            ];
 
-                let rating = "";
 
-                if (
-                    header &&
-                    header[index + 1]
+        const options =
+            radios.map(
+                function (
+                    radio,
+                    radioIndex
                 ) {
-                    rating =
-                        cleanText(
-                            header[index + 1].innerText
-                        );
+
+                    return {
+
+                        index:
+                            radioIndex,
+
+                        rating:
+                            clean(
+                                headers[
+                                    radioIndex + 1
+                                ]
+                                ?.innerText || ""
+                            ),
+
+                        value:
+                            radio.value || "",
+
+                        name:
+                            radio.name || "",
+
+                        checked:
+                            radio.checked,
+
+                        disabled:
+                            radio.disabled
+
+                    };
+
                 }
+            );
 
-                return {
-                    index,
-                    rating,
-                    text,
-                    value: radio.value,
-                    name: radio.name
-                };
-            }
-        );
 
         return {
-            question: questionText,
-            options
-        };
-    }
 
-    function readQuestion(wrapper, index) {
-
-        const id =
-            wrapper.id || "";
-
-        const required =
-            wrapper.dataset.required === "True" ||
-            wrapper.dataset.required === "true";
-
-        const rows =
-            getRows(wrapper);
-
-        return {
             index,
-            id,
-            title: getQuestionTitle(wrapper),
-            required,
-            rows: rows.map(readRow)
+
+            question,
+
+            required:
+                radios.some(
+                    radio =>
+                        radio.required
+                ),
+
+            options
+
         };
+
     }
+
 
     function scanSurveyForm() {
 
@@ -118,71 +113,57 @@
                 "form.js_surveyform"
             );
 
+
         if (!form) {
+
             return null;
+
         }
 
-        const wrappers =
+
+        const rows =
             [
                 ...form.querySelectorAll(
-                    ".js_question-wrapper"
+                    ".js_question-wrapper tbody tr"
                 )
-            ];
-
-        const questions =
-            wrappers.map(
-                readQuestion
+            ]
+            .map(readRow)
+            .filter(
+                row =>
+                    row.question
             );
 
+
         return {
-            action: form.action || "",
-            method: form.method || "post",
-            name: form.name || "",
-            questionCount: questions.length,
-            questions
+
+            action:
+                form.action || "",
+
+            method:
+                (
+                    form.method ||
+                    "post"
+                ).toLowerCase(),
+
+            name:
+                form.name || "",
+
+            rows,
+
+            questionCount:
+                rows.length
+
         };
+
     }
 
-    function scanForms() {
-
-        const forms =
-            [...document.querySelectorAll("form")];
-
-        return forms.map(
-            (form, formIndex) => {
-
-                const fields =
-                    [
-                        ...form.querySelectorAll(
-                            "input:not([type='hidden']), textarea, select"
-                        )
-                    ];
-
-                return {
-                    formIndex,
-                    action: form.action || "",
-                    method: form.method || "get",
-                    fields: fields.map(
-                        (field, index) => ({
-                            index,
-                            tag: field.tagName.toLowerCase(),
-                            type: field.type || "",
-                            name: field.name || "",
-                            id: field.id || "",
-                            value: field.value || "",
-                            required: field.required,
-                            disabled: field.disabled
-                        })
-                    )
-                };
-            }
-        );
-    }
 
     window.SEAFormReader = {
-        scanForms,
+
         scanSurveyForm
+
     };
+
 
     console.log(
         "[SEA][FORM READER] Loaded"

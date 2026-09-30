@@ -2,30 +2,46 @@
 
     "use strict";
 
+
     function normalize(text) {
+
         return (text || "")
-            .toLowerCase()
             .replace(/\s+/g, " ")
-            .trim();
+            .trim()
+            .toLowerCase();
+
     }
 
-    function findRatingRadio(row, rating) {
+
+    function findRatingRadio(
+        row,
+        rating
+    ) {
 
         const radios =
-            [...row.querySelectorAll(
-                'input[type="radio"]'
-            )];
+            [
+                ...row.querySelectorAll(
+                    'input[type="radio"]'
+                )
+            ];
+
 
         const headers =
-            row
-                .closest("table")
-                ?.querySelectorAll(
-                    "thead th"
-                );
+            [
+                ...(
+                    row
+                        .closest("table")
+                        ?.querySelectorAll(
+                            "thead th"
+                        ) || []
+                )
+            ];
 
-        if (!headers) {
-            return null;
-        }
+
+        const wanted =
+            String(rating)
+                .trim();
+
 
         for (
             let i = 0;
@@ -33,29 +49,46 @@
             i++
         ) {
 
-            const headerText =
-                (
+            const header =
+                String(
                     headers[i + 1]
-                    ?.innerText || ""
-                ).trim();
+                        ?.innerText || ""
+                )
+                .trim();
+
 
             if (
-                headerText === String(rating)
+                header === wanted
             ) {
+
                 return radios[i];
+
             }
+
         }
+
 
         return null;
+
     }
 
-    function setRadio(radio) {
 
-        if (!radio || radio.disabled) {
+    function selectRadio(
+        radio
+    ) {
+
+        if (
+            !radio ||
+            radio.disabled
+        ) {
+
             return false;
+
         }
 
-        radio.checked = true;
+
+        radio.click();
+
 
         radio.dispatchEvent(
             new Event(
@@ -66,6 +99,7 @@
             )
         );
 
+
         radio.dispatchEvent(
             new Event(
                 "change",
@@ -75,28 +109,47 @@
             )
         );
 
-        return true;
+
+        return radio.checked;
+
     }
 
-    function fillFeedbackForm(answers) {
+
+    function fillFeedbackForm(
+        answers
+    ) {
 
         const form =
             document.querySelector(
                 "form.js_surveyform"
             );
 
+
         if (!form) {
+
             return {
+
                 ok: false,
+
                 filled: 0,
-                missing: ["No survey form found"]
+
+                total: 0,
+
+                missing: [
+                    "Survey form not found"
+                ]
+
             };
+
         }
 
-        let filled = 0;
+
         let total = 0;
 
+        let filled = 0;
+
         const missing = [];
+
 
         const rows =
             [
@@ -105,47 +158,80 @@
                 )
             ];
 
-        for (const row of rows) {
 
-            const questionCell =
-                row.querySelector("th");
+        for (
+            const row
+            of rows
+        ) {
 
             const question =
                 (
-                    questionCell?.innerText || ""
+                    row.querySelector("th")
+                        ?.innerText || ""
                 )
                 .replace(/\s+/g, " ")
                 .trim();
 
+
             if (!question) {
+
                 continue;
+
             }
+
 
             total++;
 
-            const key =
-                normalize(question);
 
-            let rating = null;
+            const normalizedQuestion =
+                normalize(
+                    question
+                );
 
-            for (const answerKey in answers) {
+
+            let rating =
+                undefined;
+
+
+            for (
+                const answerKey
+                of Object.keys(
+                    answers || {}
+                )
+            ) {
 
                 if (
-                    normalize(answerKey) === key
+                    normalize(
+                        answerKey
+                    ) ===
+                    normalizedQuestion
                 ) {
+
                     rating =
-                        answers[answerKey];
+                        answers[
+                            answerKey
+                        ];
+
                     break;
+
                 }
+
             }
 
+
             if (
-                rating === null ||
-                rating === undefined
+                rating === undefined ||
+                rating === null
             ) {
-                missing.push(question);
+
+                missing.push(
+                    question
+                );
+
                 continue;
+
             }
+
 
             const radio =
                 findRatingRadio(
@@ -153,7 +239,9 @@
                     rating
                 );
 
+
             if (!radio) {
+
                 missing.push(
                     question +
                     " [rating " +
@@ -162,24 +250,47 @@
                 );
 
                 continue;
+
             }
 
-            if (setRadio(radio)) {
+
+            if (
+                selectRadio(
+                    radio
+                )
+            ) {
+
                 filled++;
+
+            } else {
+
+                missing.push(
+                    question +
+                    " [selection failed]"
+                );
+
             }
+
         }
 
+
         return {
+
             ok:
                 total > 0 &&
-                missing.length === 0 &&
-                filled === total,
+                filled === total &&
+                missing.length === 0,
 
             filled,
+
             total,
+
             missing
+
         };
+
     }
+
 
     function validateForm() {
 
@@ -188,58 +299,100 @@
                 "form.js_surveyform"
             );
 
+
         if (!form) {
+
             return {
+
                 ok: false,
+
                 missing: [
                     "Survey form not found"
                 ]
+
             };
+
         }
 
-        const requiredGroups =
+
+        const groups =
             new Map();
 
-        const radios =
+
+        const requiredRadios =
             [
                 ...form.querySelectorAll(
                     'input[type="radio"][required]'
                 )
             ];
 
-        for (const radio of radios) {
 
-            if (!requiredGroups.has(radio.name)) {
-                requiredGroups.set(
+        for (
+            const radio
+            of requiredRadios
+        ) {
+
+            if (
+                !groups.has(
+                    radio.name
+                )
+            ) {
+
+                groups.set(
                     radio.name,
                     false
                 );
+
             }
 
-            if (radio.checked) {
-                requiredGroups.set(
+
+            if (
+                radio.checked
+            ) {
+
+                groups.set(
                     radio.name,
                     true
                 );
+
             }
+
         }
+
 
         const missing = [];
 
+
         for (
-            const [name, checked]
-            of requiredGroups
+            const [
+                name,
+                checked
+            ]
+            of groups
         ) {
+
             if (!checked) {
-                missing.push(name);
+
+                missing.push(
+                    name
+                );
+
             }
+
         }
 
+
         return {
-            ok: missing.length === 0,
+
+            ok:
+                missing.length === 0,
+
             missing
+
         };
+
     }
+
 
     function submitForm() {
 
@@ -248,14 +401,22 @@
                 "form.js_surveyform"
             );
 
+
         if (!form) {
+
             return {
+
                 ok: false,
-                error: "Survey form not found"
+
+                error:
+                    "Survey form not found"
+
             };
+
         }
 
-        const submitButton =
+
+        const button =
             form.querySelector(
                 'button[name="button_submit"]'
             ) ||
@@ -266,25 +427,43 @@
                 'button[type="submit"]'
             );
 
-        if (!submitButton) {
+
+        if (!button) {
+
             return {
+
                 ok: false,
-                error: "Submit button not found"
+
+                error:
+                    "Submit button not found"
+
             };
+
         }
 
-        submitButton.click();
+
+        button.click();
+
 
         return {
+
             ok: true
+
         };
+
     }
 
+
     window.SEAFormFiller = {
+
         fillFeedbackForm,
+
         validateForm,
+
         submitForm
+
     };
+
 
     console.log(
         "[SEA][FORM FILLER] Loaded"
