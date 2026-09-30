@@ -9,56 +9,68 @@
             return false;
         }
 
-        const valueMap = {
-            5: "135577",
-            4: "135578",
-            3: "135579",
-            2: "135580",
-            1: "135581"
-        };
-
-        const value = valueMap[score];
-
-        if (!value) {
-            console.error("[SEA][FORM FILLER] Invalid score:", score);
-            return false;
-        }
-
-        const radioGroups = new Set(
-            [...form.querySelectorAll('input[type="radio"]')]
-                .map(input => input.name)
-        );
+        const questions = form.querySelectorAll(".js_question-wrapper");
 
         let filled = 0;
+        let total = 0;
 
-        for (const name of radioGroups) {
-            const radio = form.querySelector(
-                `input[type="radio"][name="${CSS.escape(name)}"][value="${value}"]`
-            );
+        for (const question of questions) {
+            const rows = question.querySelectorAll("tbody tr");
 
-            if (radio) {
-                radio.checked = true;
+            for (const row of rows) {
+                const radios = row.querySelectorAll('input[type="radio"]');
 
-                radio.dispatchEvent(
-                    new Event("change", { bubbles: true })
-                );
+                if (!radios.length) {
+                    continue;
+                }
 
-                radio.dispatchEvent(
-                    new Event("input", { bubbles: true })
-                );
+                total++;
 
-                filled++;
+                const headers = question.querySelectorAll("thead th");
+                let scoreIndex = -1;
+
+                headers.forEach((header, index) => {
+                    if (header.innerText.trim() === String(score)) {
+                        scoreIndex = index;
+                    }
+                });
+
+                if (scoreIndex === -1) {
+                    console.error(
+                        "[SEA][FORM FILLER] Score not found:",
+                        score
+                    );
+                    continue;
+                }
+
+                const radio = radios[scoreIndex - 1];
+
+                if (radio) {
+                    radio.checked = true;
+
+                    radio.dispatchEvent(
+                        new Event("change", { bubbles: true })
+                    );
+
+                    radio.dispatchEvent(
+                        new Event("input", { bubbles: true })
+                    );
+
+                    filled++;
+                }
             }
         }
 
         console.log(
-            `[SEA][FORM FILLER] Filled ${filled}/${radioGroups.size} questions with score ${score}.`
+            `[SEA][FORM FILLER] Filled ${filled}/${total} questions with score ${score}.`
         );
 
-        return filled === radioGroups.size;
+        return total > 0 && filled === total;
     }
 
     window.SEAFormFiller = {
         fillFeedbackForm
     };
+
+    console.log("[SEA][FORM FILLER] Loaded");
 })();
