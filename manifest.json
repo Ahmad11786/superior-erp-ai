@@ -1,26 +1,32 @@
 {
   "manifest_version": 3,
-  "name": "Superior ERP AI Assistant",
-  "version": "0.1.0",
-  "description": "Assists the logged-in student with forms inside Superior University ERP.",
-  "permissions": ["storage"],
-  "host_permissions": ["https://erp.superior.edu.pk/*"],
-  "background": { "service_worker": "background/service-worker.js" },
+  "name": "Superior ERP AI Feedback Assistant",
+  "version": "1.0.0",
+  "description": "Assists with feedback forms in the authenticated Superior University ERP session.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://erp.superior.edu.pk/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Superior ERP AI"
+  },
   "content_scripts": [
     {
-      "matches": ["https://erp.superior.edu.pk/*"],
+      "matches": [
+        "https://erp.superior.edu.pk/*"
+      ],
       "js": [
-    "utils/constants.js",
-    "utils/logger.js",
-    "content/erp-detector.js",
-    "content/form-reader.js",
-    "content/form-filler.js",
-    "content/main.js"
-],
+        "utils/constants.js",
+        "utils/logger.js",
+        "content/erp-detector.js",
+        "content/form-reader.js",
+        "content/form-filler.js",
+        "content/main.js"
+      ],
       "run_at": "document_idle"
     }
-  ],
-  "action": { "default_title": "Superior ERP AI", "default_popup": "popup/popup.html" },
-  "options_page": "options/options.html",
-  "icons": { "16": "assets/icon16.png", "48": "assets/icon48.png", "128": "assets/icon128.png" }
+  ]
 }

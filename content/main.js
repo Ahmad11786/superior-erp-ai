@@ -1,28 +1,43 @@
 (function () {
+
     "use strict";
 
-    console.log("[SEA][INFO] Content script loaded");
+    SEA.Logger.info(
+        "Content script loaded"
+    );
 
-    if (!SEA.ErpDetector.isErpHost()) {
-        console.log("[SEA][INFO] Not an ERP page");
+    if (
+        !SEA.ErpDetector.isErpHost()
+    ) {
         return;
     }
 
-    console.log("[SEA][INFO] ERP detected");
+    SEA.Logger.info(
+        "ERP detected"
+    );
 
-    let lastForm = null;
+    let currentForm = null;
     let processing = false;
-    let watcherStarted = false;
 
     const DEFAULT_SETTINGS = {
         autoFill: true,
         autoSubmit: false,
-        verifyIdentity: true,
-        askBeforeSubmit: true
+        askBeforeSubmit: true,
+        debugMode: false
     };
 
+    function sleep(ms) {
+        return new Promise(
+            resolve => setTimeout(resolve, ms)
+        );
+    }
+
     async function getSettings() {
-        const data = await chrome.storage.local.get("settings");
+
+        const data =
+            await chrome.storage.local.get(
+                "settings"
+            );
 
         return Object.assign(
             {},
@@ -32,52 +47,37 @@
     }
 
     async function getAnswers() {
-        const data = await chrome.storage.local.get(
-            "feedbackAnswers"
-        );
+
+        const data =
+            await chrome.storage.local.get(
+                "feedbackAnswers"
+            );
 
         return data.feedbackAnswers || {};
     }
 
-    function findFeedbackForm() {
+    function getForm() {
+
         return document.querySelector(
             "form.js_surveyform"
         );
     }
 
     function modulesReady() {
-        if (!window.SEAFormReader) {
-            console.log(
-                "[SEA][WAIT] Form reader is not loaded yet."
-            );
 
-            return false;
-        }
-
-        if (typeof window.SEAFormReader.scanForms !== "function") {
-            console.log(
-                "[SEA][WAIT] Form reader scanForms is not ready yet."
-            );
-
-            return false;
-        }
-
-        if (!window.SEAFormFiller) {
-            console.log(
-                "[SEA][WAIT] Form filler is not loaded yet."
-            );
-
+        if (
+            !window.SEAFormReader ||
+            typeof window.SEAFormReader.scanSurveyForm !==
+                "function"
+        ) {
             return false;
         }
 
         if (
+            !window.SEAFormFiller ||
             typeof window.SEAFormFiller.fillFeedbackForm !==
-            "function"
+                "function"
         ) {
-            console.log(
-                "[SEA][WAIT] Form filler is not ready yet."
-            );
-
             return false;
         }
 
@@ -85,262 +85,297 @@
     }
 
     async function processForm() {
+
         if (processing) {
             return;
         }
 
-        const form = findFeedbackForm();
+        const form = getForm();
 
         if (!form) {
             return;
         }
 
-        if (form === lastForm) {
+        if (form === currentForm) {
             return;
         }
 
         if (!modulesReady()) {
+
+            SEA.Logger.warn(
+                "Waiting for form modules..."
+            );
+
             return;
         }
 
         processing = true;
 
-        console.log(
-            "[SEA][FORM] Feedback form detected"
+        SEA.Logger.info(
+            "Feedback form detected"
         );
 
         try {
-            const forms =
-                window.SEAFormReader.scanForms();
+
+            const survey =
+                window.SEAFormReader
+                    .scanSurveyForm();
+
+            if (!survey) {
+                SEA.Logger.warn(
+                    "Unable to read survey."
+                );
+
+                return;
+            }
 
             console.log(
-                "[SEA][FORM] Form data:",
-                forms
+                "[SEA][FORM] Survey:",
+                survey
             );
 
-            const settings = await getSettings();
-
-            console.log(
-                "[SEA][SETTINGS]",
-                settings
-            );
+            const settings =
+                await getSettings();
 
             if (!settings.autoFill) {
-                console.log(
-                    "[SEA][INFO] Auto Fill is disabled."
+
+                SEA.Logger.info(
+                    "Auto Fill is disabled."
                 );
 
-                lastForm = form;
+                currentForm = form;
+
                 return;
             }
 
-            const answers = await getAnswers();
-
-            if (!Object.keys(answers).length) {
-                console.warn(
-                    "[SEA][INFO] No feedback answers configured."
-                );
-
-                lastForm = form;
-                return;
-            }
-
-            console.log(
-                "[SEA][STATE] Filling form..."
-            );
-
-            const fillResult =
-                window.SEAFormFiller.fillFeedbackForm(
-                    answers
-                );
-
-            console.log(
-                "[SEA][STATE] Fill result:",
-                fillResult
-            );
-
-            if (!fillResult || !fillResult.ok) {
-                console.warn(
-                    "[SEA][STATE] Form was not completely filled.",
-                    fillResult
-                );
-
-                lastForm = form;
-                return;
-            }
-
-            console.log(
-                "[SEA][STATE] Form filled successfully."
-            );
+            const answers =
+                await getAnswers();
 
             if (
-                typeof window.SEAFormFiller.validateForm ===
-                "function"
+                !Object.keys(answers).length
             ) {
-                console.log(
-                    "[SEA][STATE] Validating..."
+
+                SEA.Logger.warn(
+                    "No configured answers found."
                 );
 
-                const validation =
-                    window.SEAFormFiller.validateForm();
+                currentForm = form;
 
-                console.log(
-                    "[SEA][STATE] Validation:",
-                    validation
-                );
-
-                if (!validation || !validation.ok) {
-                    console.warn(
-                        "[SEA][STATE] Validation failed.",
-                        validation
-                    );
-
-                    lastForm = form;
-                    return;
-                }
-
-                console.log(
-                    "[SEA][STATE] Form validation successful."
-                );
+                return;
             }
 
-            if (!settings.autoSubmit) {
-                console.log(
-                    "[SEA][INFO] Auto Submit is disabled."
+            SEA.Logger.info(
+                "Filling configured answers..."
+            );
+
+            const result =
+                window.SEAFormFiller
+                    .fillFeedbackForm(
+                        answers
+                    );
+
+            console.log(
+                "[SEA][FORM] Fill result:",
+                result
+            );
+
+            if (!result.ok) {
+
+                SEA.Logger.warn(
+                    "Form was not completely filled."
                 );
 
-                lastForm = form;
+                console.warn(
+                    "[SEA][FORM] Missing:",
+                    result.missing
+                );
+
+                currentForm = form;
+
+                return;
+            }
+
+            SEA.Logger.info(
+                "All configured questions filled."
+            );
+
+            const validation =
+                window.SEAFormFiller
+                    .validateForm();
+
+            console.log(
+                "[SEA][FORM] Validation:",
+                validation
+            );
+
+            if (!validation.ok) {
+
+                SEA.Logger.warn(
+                    "Validation failed."
+                );
+
+                currentForm = form;
+
+                return;
+            }
+
+            SEA.Logger.info(
+                "Form validation successful."
+            );
+
+            if (!settings.autoSubmit) {
+
+                SEA.Logger.info(
+                    "Auto Submit is OFF."
+                );
+
+                currentForm = form;
+
                 return;
             }
 
             if (settings.askBeforeSubmit) {
-                console.log(
-                    "[SEA][INFO] Ask Before Submit is enabled."
+
+                SEA.Logger.info(
+                    "Waiting for submission confirmation."
                 );
 
-                lastForm = form;
+                currentForm = form;
+
                 return;
             }
 
-            if (
-                typeof window.SEAFormFiller.submitForm !==
-                "function"
-            ) {
-                console.error(
-                    "[SEA][ERROR] submitForm function not found."
-                );
-
-                lastForm = form;
-                return;
-            }
-
-            console.log(
-                "[SEA][STATE] Automatically submitting..."
+            SEA.Logger.info(
+                "Submitting form..."
             );
 
             const submitResult =
-                window.SEAFormFiller.submitForm();
+                window.SEAFormFiller
+                    .submitForm();
 
             console.log(
-                "[SEA][STATE] Submit result:",
+                "[SEA][FORM] Submit result:",
                 submitResult
             );
 
-            lastForm = form;
+            currentForm = form;
+
+            await sleep(1500);
 
         } catch (error) {
-            console.error(
-                "[SEA][ERROR] Form processing failed:",
+
+            SEA.Logger.error(
+                "Form processing failed:",
                 error
             );
 
         } finally {
+
             processing = false;
         }
     }
 
     function startWatcher() {
-        if (watcherStarted) {
+
+        if (!document.body) {
+
+            setTimeout(
+                startWatcher,
+                250
+            );
+
             return;
         }
 
-        watcherStarted = true;
-
-        console.log(
-            "[SEA][INFO] Starting feedback form watcher..."
-        );
-
         const observer =
-            new MutationObserver(function () {
-                processForm();
-            });
+            new MutationObserver(
+                function () {
+                    processForm();
+                }
+            );
 
-        if (document.body) {
-            observer.observe(document.body, {
+        observer.observe(
+            document.body,
+            {
                 childList: true,
                 subtree: true
-            });
-        }
+            }
+        );
 
         processForm();
 
-        console.log(
-            "[SEA][INFO] Dynamic form watcher active"
+        SEA.Logger.info(
+            "Dynamic form watcher active."
         );
     }
 
     function waitForModules() {
+
         let attempts = 0;
 
-        const interval = setInterval(function () {
-            attempts++;
+        const timer =
+            setInterval(
+                function () {
 
-            if (modulesReady()) {
-                clearInterval(interval);
+                    attempts++;
 
-                console.log(
-                    "[SEA][INFO] All form modules are ready."
-                );
+                    if (
+                        modulesReady()
+                    ) {
 
-                startWatcher();
+                        clearInterval(timer);
 
-                return;
-            }
+                        SEA.Logger.info(
+                            "All form modules ready."
+                        );
 
-            if (attempts >= 100) {
-                clearInterval(interval);
+                        startWatcher();
 
-                console.error(
-                    "[SEA][ERROR] Form modules did not load."
-                );
-            }
+                        return;
+                    }
 
-        }, 100);
+                    if (
+                        attempts >= 100
+                    ) {
+
+                        clearInterval(timer);
+
+                        SEA.Logger.error(
+                            "Form modules failed to load."
+                        );
+                    }
+
+                },
+                100
+            );
     }
 
     window.SEA = window.SEA || {};
 
-    window.SEA.scan = processForm;
+    window.SEA.scan =
+        processForm;
 
-    window.SEA.getStatus = function () {
-        return {
-            erp: true,
-            formDetected: !!findFeedbackForm(),
-            readerReady:
-                !!window.SEAFormReader &&
-                typeof window.SEAFormReader.scanForms ===
-                    "function",
-            fillerReady:
-                !!window.SEAFormFiller &&
-                typeof window.SEAFormFiller.fillFeedbackForm ===
-                    "function"
+    window.SEA.status =
+        function () {
+
+            return {
+                erp:
+                    SEA.ErpDetector
+                        .isErpHost(),
+
+                form:
+                    !!getForm(),
+
+                reader:
+                    !!window.SEAFormReader,
+
+                filler:
+                    !!window.SEAFormFiller,
+
+                processing
+            };
         };
-    };
 
     waitForModules();
-
-    console.log(
-        "[SEA][INFO] Main controller initialized."
-    );
 
 })();
